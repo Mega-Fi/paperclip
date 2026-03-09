@@ -1,0 +1,19 @@
+[Unit]
+Description=Paperclip AI Control Plane
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/Projects/paperclip
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3100
+Environment=SERVE_UI=true
+Environment=PAPERCLIP_HOME=/var/lib/paperclip
+Environment=PAPERCLIP_DEPLOYMENT_MODE=local_trusted
+ExecStart=/usr/bin/node --import ./server/node_modules/tsx/dist/loader.mjs server/dist/index.js
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
