@@ -17,7 +17,7 @@ import {
   projects,
 } from "@paperclipai/db";
 import { extractProjectMentionIds } from "@paperclipai/shared";
-import { conflict, notFound, unprocessable } from "../errors.js";
+import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import {
   defaultIssueExecutionWorkspaceSettingsForProject,
   parseProjectExecutionWorkspacePolicy,
@@ -312,12 +312,13 @@ function withActiveRuns(
 }
 
 export function issueService(db: Db) {
-  async function assertAssignableAgent(companyId: string, agentId: string) {
+  async function assertAssignableAgent(companyId: string, agentId: string, creatingAgentId?: string | null) {
     const assignee = await db
       .select({
         id: agents.id,
         companyId: agents.companyId,
         status: agents.status,
+        reportsTo: agents.reportsTo,
       })
       .from(agents)
       .where(eq(agents.id, agentId))
@@ -332,6 +333,9 @@ export function issueService(db: Db) {
     }
     if (assignee.status === "terminated") {
       throw conflict("Cannot assign work to terminated agents");
+    }
+    if (creatingAgentId && assignee.reportsTo !== null && assignee.reportsTo !== creatingAgentId) {
+      throw forbidden("Agent cannot assign tasks to agents outside their reporting line");
     }
   }
 
@@ -642,7 +646,7 @@ export function issueService(db: Db) {
         throw unprocessable("Issue can only have one assignee");
       }
       if (data.assigneeAgentId) {
-        await assertAssignableAgent(companyId, data.assigneeAgentId);
+        await assertAssignableAgent(companyId, data.assigneeAgentId, data.createdByAgentId);
       }
       if (data.assigneeUserId) {
         await assertAssignableUser(companyId, data.assigneeUserId);
@@ -705,7 +709,7 @@ export function issueService(db: Db) {
       });
     },
 
-    update: async (id: string, data: Partial<typeof issues.$inferInsert> & { labelIds?: string[] }) => {
+    update: async (id: string, data: Partial<typeof issues.$inferInsert> & { labelIds?: string[] }, actingAgentId?: string | null) => {
       const existing = await db
         .select()
         .from(issues)
@@ -736,7 +740,7 @@ export function issueService(db: Db) {
         throw unprocessable("in_progress issues require an assignee");
       }
       if (issueData.assigneeAgentId) {
-        await assertAssignableAgent(existing.companyId, issueData.assigneeAgentId);
+        await assertAssignableAgent(existing.companyId, issueData.assigneeAgentId, actingAgentId);
       }
       if (issueData.assigneeUserId) {
         await assertAssignableUser(existing.companyId, issueData.assigneeUserId);
